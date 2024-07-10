@@ -6,13 +6,14 @@
 /*
  * format supported
  *  integer: %d %i
- *  long integer: %ld %li
  *  unsigned integer: %o %u %x %X
- *  unsigned long integer: %lo %lu %lx %lX
  *  string: %s
  *  charactor: %c
  *  pointer: %p
  *  '%': %%
+ * modifier support
+ *  long integer: l
+ *  long long integer: ll
  * */
 
 unsigned long snprintfs(char *str, unsigned long size, const char *format, ...) __attribute__((format(printf, 3, 4)));

@@ -34,6 +34,19 @@ char s_buffer[4096];
     } while(0)
 
 int main() {
+    RTEST("%d", 999999);
+    RTEST("%d", -999999);
+    RTEST("%o", 999999);
+    RTEST("%u", 999999);
+    RTEST("%x", 999999);
+    RTEST("%X", 999999);
+
+    RTEST("%ld", 9999999999L);
+    RTEST("%ld", -9999999999L);
+    RTEST("%lo", 9999999999L);
+    RTEST("%lu", 9999999999L);
+    RTEST("%lx", 9999999999L);
+    RTEST("%lX", 9999999999L);
 
     RTEST("simple string %%%%%%");
     RTEST("simple integer, %d %i %d %d %d %d", 99999, 99999, 0, -1, 0x7fffffff, 0x80000000);
@@ -43,7 +56,7 @@ int main() {
     RTEST("simple charactor, %c %c %c %c", 'a', 'b', 'c', 'd');
     RTEST("simple string, %s %s %s %s", "this", "is", "a", "song");
     RTEST("simple pointer, %p %p %p", main, main, main);
-    RTEST("mixed, %d %ld %u %o %x %X %lu %lo %lx %lX %c %s %p",
+    RTEST("mixed, %d %ld %u %o %x %X %lu %lo %lx %lX %c %s %p %% %% %%",
             9999999, 999999999999999L, 9999999, 9999999, 9999999, 9999999,
             999999999999999L, 999999999999999L, 999999999999999L, 999999999999999L, 'X', "song", main);
 

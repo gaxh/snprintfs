@@ -9,6 +9,17 @@ struct SnprintfsBuffer {
     unsigned long left;
 };
 
+enum SnprintfsIntFormatModifier {
+    SnprintfsIntFormatModifier_INT = 0,
+    SnprintfsIntFormatModifier_LONG,
+    SnprintfsIntFormatModifier_LONGLONG,
+};
+
+struct SnprintfsConversions {
+    int conversion; // 0, 'd', 'u', 'x', 'p', ... // 0 is INVALID conversion
+    enum SnprintfsIntFormatModifier long_int; // if 'l' present
+};
+
 static void vsnprintfsb_char(struct SnprintfsBuffer *buffer, char v) {
     if(buffer->left != 0) {
         buffer->str[buffer->offset] = v;
@@ -97,6 +108,37 @@ static const char *scale_map[] = {
         } \
     } while(0)
 
+static void conversion_clear(struct SnprintfsConversions *sc) {
+    sc->conversion = 0;
+    sc->long_int = SnprintfsIntFormatModifier_INT;
+}
+
+static unsigned long conversion_next(struct SnprintfsConversions *sc, const char *format, unsigned long offset) {
+    static const char VALID_CONVERSIONS[] = "%%diouxXscp";
+
+    conversion_clear(sc);
+
+    while(format[offset] != 0) {
+
+        if(strchr(VALID_CONVERSIONS, format[offset])) {
+            sc->conversion = format[offset];
+            break;
+        }
+
+        if(format[offset] == 'l') {
+            if(sc->long_int == SnprintfsIntFormatModifier_INT) {
+                sc->long_int = SnprintfsIntFormatModifier_LONG;
+            } else if(sc->long_int == SnprintfsIntFormatModifier_LONG) {
+                sc->long_int = SnprintfsIntFormatModifier_LONGLONG;
+            }
+        }
+
+        ++offset;
+    }
+
+    return offset;
+}
+
 static void vsnprintfsb(struct SnprintfsBuffer *buffer, const char *format, va_list args) {
     unsigned long format_offset = 0;
 
@@ -105,6 +147,7 @@ static void vsnprintfsb(struct SnprintfsBuffer *buffer, const char *format, va_l
 
         unsigned long sharp_offset = format_offset;
         unsigned long copy_size;
+        struct SnprintfsConversions sc;
 
         while(format[sharp_offset] != '%' && format[sharp_offset] != 0) {
             ++sharp_offset;
@@ -125,84 +168,75 @@ static void vsnprintfsb(struct SnprintfsBuffer *buffer, const char *format, va_l
 
         assert(format[format_offset] == '%');
         ++format_offset;
+        
+        format_offset = conversion_next(&sc, format, format_offset);
 
-        switch(format[format_offset]) {
+        if(sc.conversion == 0) {
+            break;
+        }
+
+#define VSNPRINTFSB_FORMAT_INT(buffer, args, scale, lower) \
+        switch(sc.long_int) { \
+            case SnprintfsIntFormatModifier_INT: \
+                vsnprintfsb_signed(buffer, int, va_arg(args, int), scale, lower); \
+                break; \
+            case SnprintfsIntFormatModifier_LONG: \
+                vsnprintfsb_signed(buffer, long, va_arg(args, long), scale, lower); \
+                break; \
+            case SnprintfsIntFormatModifier_LONGLONG: \
+                vsnprintfsb_signed(buffer, long long, va_arg(args, long long), scale, lower); \
+                break; \
+        }
+
+#define VSNPRINTFSB_FORMAT_UNSIGNED(buffer, args, scale, lower) \
+        switch(sc.long_int) { \
+            case SnprintfsIntFormatModifier_INT: \
+                vsnprintfsb_unsigned(buffer, unsigned, va_arg(args, unsigned), scale, lower); \
+                break; \
+            case SnprintfsIntFormatModifier_LONG: \
+                vsnprintfsb_unsigned(buffer, unsigned long, va_arg(args, unsigned long), scale, lower); \
+                break; \
+            case SnprintfsIntFormatModifier_LONGLONG: \
+                vsnprintfsb_unsigned(buffer, unsigned long long, va_arg(args, unsigned long long), scale, lower); \
+                break; \
+        }
+
+        switch(sc.conversion) {
             case '%':
                 vsnprintfsb_char(buffer, '%');
-                ++format_offset;
                 break;
             case 'd':
             case 'i':
-                vsnprintfsb_signed(buffer, int, va_arg(args, int), 10, 0);
-                ++format_offset;
+                VSNPRINTFSB_FORMAT_INT(buffer, args, 10, 0);
                 break;
             case 'o':
-                vsnprintfsb_unsigned(buffer, unsigned, va_arg(args, unsigned), 8, 0);
-                ++format_offset;
+                VSNPRINTFSB_FORMAT_UNSIGNED(buffer, args, 8, 0);
                 break;
             case 'u':
-                vsnprintfsb_unsigned(buffer, unsigned, va_arg(args, unsigned), 10, 0);
-                ++format_offset;
+                VSNPRINTFSB_FORMAT_UNSIGNED(buffer, args, 10, 0);
                 break;
             case 'x':
-                vsnprintfsb_unsigned(buffer, unsigned, va_arg(args, unsigned), 16, 0);
-                ++format_offset;
+                VSNPRINTFSB_FORMAT_UNSIGNED(buffer, args, 16, 0);
                 break;
             case 'X':
-                vsnprintfsb_unsigned(buffer, unsigned, va_arg(args, unsigned), 16, 1);
-                ++format_offset;
+                VSNPRINTFSB_FORMAT_UNSIGNED(buffer, args, 16, 1);
                 break;
             case 's':
                 vsnprintfsb_string(buffer, va_arg(args, const char *));
-                ++format_offset;
                 break;
             case 'c':
                 vsnprintfsb_char(buffer, va_arg(args, int));
-                ++format_offset;
                 break;
             case 'p':
                 vsnprintfsb_char(buffer, '0');
                 vsnprintfsb_char(buffer, 'x');
                 vsnprintfsb_unsigned(buffer, unsigned long, (unsigned long)va_arg(args, void *), 16, 0);
-                ++format_offset;
-                break;
-            case 'l':
-                ++format_offset;
-                {
-                    switch(format[format_offset]) {
-                        case 'd':
-                        case 'i':
-                            vsnprintfsb_signed(buffer, long, va_arg(args, long), 10, 0);
-                            ++format_offset;
-                            break;
-                        case 'o':
-                            vsnprintfsb_unsigned(buffer, unsigned long, va_arg(args, unsigned long), 8, 0);
-                            ++format_offset;
-                            break;
-                        case 'u':
-                            vsnprintfsb_unsigned(buffer, unsigned long, va_arg(args, unsigned long), 10, 0);
-                            ++format_offset;
-                            break;
-                        case 'x':
-                            vsnprintfsb_unsigned(buffer, unsigned long, va_arg(args, unsigned long), 16, 0);
-                            ++format_offset;
-                            break;
-                        case 'X':
-                            vsnprintfsb_unsigned(buffer, unsigned long, va_arg(args, unsigned long), 16, 1);
-                            ++format_offset;
-                            break;
-                        default:
-                            assert(0);
-                            ++format_offset;
-                            break;
-                    }
-                }
                 break;
             default:
                 assert(0);
-                ++format_offset;
                 break;
         }
+        ++format_offset;
     }
 }
 
